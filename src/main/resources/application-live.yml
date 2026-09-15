@@ -1,0 +1,9 @@
+spring:
+  config:
+    activate:
+      on-profile: live
+
+smart-trader:
+  mode: ${TRADING_MODE:LIVE}
+  live-trading-enabled: ${LIVE_TRADING_ENABLED:false}
+  deterministic-fallback-enabled: false

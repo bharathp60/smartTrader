@@ -1,0 +1,9 @@
+spring:
+  config:
+    activate:
+      on-profile: paper
+
+smart-trader:
+  mode: PAPER
+  live-trading-enabled: false
+  deterministic-fallback-enabled: false

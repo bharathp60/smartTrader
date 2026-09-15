@@ -1,0 +1,17 @@
+spring:
+  config:
+    activate:
+      on-profile: dev
+  jpa:
+    show-sql: false
+  docker:
+    compose:
+      enabled: false
+
+logging:
+  level:
+    com.smarttrader: DEBUG
+
+smart-trader:
+  mode: ${TRADING_MODE:PAPER}
+  live-trading-enabled: false

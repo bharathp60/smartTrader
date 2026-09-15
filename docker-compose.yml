@@ -1,0 +1,54 @@
+services:
+  smart-trader:
+    build: .
+    container_name: smart-trader
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    env_file:
+      - .env
+    environment:
+      SPRING_PROFILES_ACTIVE: ${SPRING_PROFILES_ACTIVE:-paper}
+      DB_URL: jdbc:postgresql://postgres:5432/smart_trader
+      REDIS_HOST: redis
+      TRADING_MODE: ${TRADING_MODE:-PAPER}
+      LIVE_TRADING_ENABLED: ${LIVE_TRADING_ENABLED:-false}
+    ports:
+      - "${SERVER_PORT:-8080}:8080"
+
+  postgres:
+    image: postgres:16-alpine
+    container_name: smart-trader-postgres
+    environment:
+      POSTGRES_DB: smart_trader
+      POSTGRES_USER: ${DB_USERNAME:-smart_trader}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-smart_trader}
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USERNAME:-smart_trader} -d smart_trader"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    container_name: smart-trader-redis
+    command: ["redis-server", "--appendonly", "yes"]
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  postgres-data:
+  redis-data:
