@@ -1,4 +1,4 @@
-﻿package com.smarttrader.features;
+package com.smarttrader.features;
 
 import com.smarttrader.dto.CandleDto;
 import com.smarttrader.indicators.IndicatorResult;
@@ -12,9 +12,10 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * Generates {@link FeatureVector} instances from historical candle data.
- * All 25 fields are computed from real technical indicators.
- * Requires at least 30 candles for meaningful output; returns neutral values when insufficient.
+ * Generates FeatureVector instances from historical candle data using real technical indicators.
+ * All 25 fields are computed from RSI, MACD, ATR, ADX, VWAP, EMA/SMA distances,
+ * Bollinger Bands, relative volume, volatility, and OBV.
+ * Returns neutral values when fewer than 30 candles are available.
  */
 @Service
 public class FeatureEngineeringService {
@@ -33,51 +34,50 @@ public class FeatureEngineeringService {
             return neutral(symbol, marketRegime, sectorStrength);
         }
 
-        // Extract primitive arrays from BigDecimal fields
         double[] closes  = candles.stream().mapToDouble(c -> c.close().doubleValue()).toArray();
         double[] highs   = candles.stream().mapToDouble(c -> c.high().doubleValue()).toArray();
         double[] lows    = candles.stream().mapToDouble(c -> c.low().doubleValue()).toArray();
         double[] volumes = candles.stream().mapToDouble(c -> (double) c.volume()).toArray();
 
-        int n = closes.length;
+        int n    = closes.length;
         double last = closes[n - 1];
 
-        // â”€â”€ Returns â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-        double return1d  = n >= 2  ? pctChange(closes[n - 2], last) : 0;
-        double return5d  = n >= 6  ? pctChange(closes[n - 6],  last) : 0;
-        double return20d = n >= 21 ? pctChange(closes[n - 21], last) : 0;
+        // Returns
+        double return1d    = n >= 2  ? pctChange(closes[n - 2], last) : 0;
+        double return5d    = n >= 6  ? pctChange(closes[n - 6],  last) : 0;
+        double return20d   = n >= 21 ? pctChange(closes[n - 21], last) : 0;
         double logReturn1d = n >= 2 && closes[n - 2] > 0 ? Math.log(last / closes[n - 2]) : 0;
 
-        // â”€â”€ RSI â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+        // RSI
         double rsi14 = n >= 15 ? safeDouble(() -> indicatorService.rsi(closes, 14), 50.0) : 50.0;
 
-        // â”€â”€ MACD â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+        // MACD
         double macdHistogram = 0, macdSignal = 0;
         if (n >= 35) {
             IndicatorResult macd = safeResult(() -> indicatorService.macd(closes, 12, 26, 9));
             if (macd != null) {
-                macdHistogram = macd.components().getOrDefault("histogram", 0.0);
-                macdSignal    = macd.components().getOrDefault("signal", 0.0);
+                macdHistogram = getComponent(macd, "histogram");
+                macdSignal    = getComponent(macd, "signal");
             }
         }
 
-        // â”€â”€ ATR â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+        // ATR
         double atr14Pct = 0;
         if (n >= 15) {
             double atr = safeDouble(() -> indicatorService.atr(highs, lows, closes, 14), 0.0);
             atr14Pct = last > 0 ? atr / last : 0;
         }
 
-        // â”€â”€ ADX â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+        // ADX
         double adx14 = 0;
         if (n >= 28) {
             IndicatorResult adxResult = safeResult(() -> indicatorService.adx(highs, lows, closes, 14));
             if (adxResult != null) {
-                adx14 = adxResult.components().getOrDefault("adx", 0.0);
+                adx14 = getComponent(adxResult, "adx");
             }
         }
 
-        // â”€â”€ VWAP distance â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+        // VWAP distance
         double vwapDistance = 0;
         if (n >= 20) {
             double[] h20 = tail(highs, 20), l20 = tail(lows, 20),
@@ -86,37 +86,37 @@ public class FeatureEngineeringService {
             vwapDistance = vwap > 0 ? (last - vwap) / vwap : 0;
         }
 
-        // â”€â”€ EMA distances â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-        double ema9Distance   = emaDistance(closes, 9, last);
+        // EMA / SMA distances
+        double ema9Distance   = emaDistance(closes, 9,  last);
         double ema21Distance  = emaDistance(closes, 21, last);
         double sma50Distance  = n >= 50
-            ? safeDouble(() -> { double s = indicatorService.sma(closes, 50); return (last - s) / s; }, 0.0)
+            ? safeDouble(() -> { double s = indicatorService.sma(closes, 50);  return (last - s) / s; }, 0.0)
             : 0;
         double sma200Distance = n >= 200
             ? safeDouble(() -> { double s = indicatorService.sma(closes, 200); return (last - s) / s; }, 0.0)
             : 0;
 
-        // â”€â”€ Bollinger %B â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+        // Bollinger %B
         double bbPercentB = 0.5;
         if (n >= 20) {
             IndicatorResult bb = safeResult(() -> indicatorService.bollingerBands(closes, 20, 2.0));
             if (bb != null) {
-                double raw = bb.components().getOrDefault("percentB", 0.0);
+                double raw = getComponent(bb, "percentB");
                 bbPercentB = Math.max(0.0, Math.min(1.0, raw));
             }
         }
 
-        // â”€â”€ Volume â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+        // Relative volume
         double relativeVolume = n >= 21
             ? safeDouble(() -> indicatorService.relativeVolume(volumes, 20), 1.0)
             : 1.0;
 
-        // â”€â”€ Volatility â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+        // Volatility (annualised)
         double volatility20d = n >= 21
             ? safeDouble(() -> indicatorService.calculateVolatility(closes, 20), 0.2)
             : 0.2;
 
-        // â”€â”€ OBV direction signal â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+        // OBV direction signal
         double obvSignal = 0;
         if (n >= 10) {
             double[] obvArr = safeArr(() -> indicatorService.obv(closes, volumes));
@@ -127,7 +127,7 @@ public class FeatureEngineeringService {
             }
         }
 
-        // â”€â”€ Composite scores â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+        // Composite scores
         double momentumScore  = normalizeFeature(return5d * 0.6 + return20d * 0.4, -0.15, 0.15);
         double liquidityScore = normalizeFeature(relativeVolume, 0.5, 3.0);
 
@@ -168,7 +168,7 @@ public class FeatureEngineeringService {
         return Math.max(0.0, Math.min(1.0, (value - min) / (max - min)));
     }
 
-    // â”€â”€ Helpers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    // --- Helpers ---
 
     private FeatureVector neutral(String symbol, MarketRegime regime, double sectorStrength) {
         return new FeatureVector(
@@ -188,9 +188,9 @@ public class FeatureEngineeringService {
 
     private double emaDistance(double[] closes, int period, double last) {
         if (closes.length < period) return 0;
-        double[] emaArr = safeArr(() -> indicatorService.ema(closes, period));
-        if (emaArr == null || emaArr.length == 0) return 0;
-        double emaLast = emaArr[emaArr.length - 1];
+        double[] arr = safeArr(() -> indicatorService.ema(closes, period));
+        if (arr == null || arr.length == 0) return 0;
+        double emaLast = arr[arr.length - 1];
         return emaLast > 0 ? (last - emaLast) / emaLast : 0;
     }
 
@@ -205,12 +205,17 @@ public class FeatureEngineeringService {
         return r;
     }
 
+    /** Safe getter for IndicatorResult.components() — returns 0.0 if key missing */
+    private double getComponent(IndicatorResult r, String key) {
+        Double val = r.components().get(key);
+        return val != null ? val : 0.0;
+    }
+
     @FunctionalInterface private interface Dbl { double get() throws Exception; }
     @FunctionalInterface private interface Res { IndicatorResult get() throws Exception; }
     @FunctionalInterface private interface Arr { double[] get() throws Exception; }
 
-    private double         safeDouble(Dbl s, double def)  { try { return s.get(); } catch (Exception e) { return def; } }
-    private IndicatorResult safeResult(Res s)              { try { return s.get(); } catch (Exception e) { return null; } }
-    private double[]        safeArr(Arr s)                 { try { return s.get(); } catch (Exception e) { return null; } }
+    private double         safeDouble(Dbl s, double def) { try { return s.get(); } catch (Exception e) { return def; } }
+    private IndicatorResult safeResult(Res s)             { try { return s.get(); } catch (Exception e) { return null; } }
+    private double[]        safeArr(Arr s)                { try { return s.get(); } catch (Exception e) { return null; } }
 }
-

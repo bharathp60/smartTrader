@@ -7,9 +7,11 @@ group = 'com.smarttrader'
 version = '0.1.0-SNAPSHOT'
 description = 'Autonomous AI/ML algorithmic trading platform with deterministic risk controls.'
 
+// Use installed JDK 26 but compile to Java 21 bytecode / API surface.
+// --release 21 ensures no post-Java-21 APIs leak into the code.
 java {
     toolchain {
-        languageVersion = JavaLanguageVersion.of(25)
+        languageVersion = JavaLanguageVersion.of(26)
     }
 }
 
@@ -20,11 +22,11 @@ ext {
 }
 
 dependencies {
-    // ── Spring Boot BOM + Spring AI BOM ─────────────────────────────────
+    // Spring Boot BOM + Spring AI BOM
     implementation platform('org.springframework.boot:spring-boot-dependencies:4.1.1')
     implementation platform("org.springframework.ai:spring-ai-bom:${springAiVersion}")
 
-    // ── Spring Boot starters ─────────────────────────────────────────────
+    // Spring Boot starters
     implementation 'org.springframework.boot:spring-boot-starter-actuator'
     implementation 'org.springframework.boot:spring-boot-starter-data-jpa'
     implementation 'org.springframework.boot:spring-boot-starter-data-redis'
@@ -34,20 +36,20 @@ dependencies {
     implementation 'org.springframework.boot:spring-boot-starter-websocket'
     implementation 'com.fasterxml.jackson.datatype:jackson-datatype-jsr310'
 
-    // ── Spring AI (OpenAI) ───────────────────────────────────────────────
+    // Spring AI (OpenAI)
     implementation 'org.springframework.ai:spring-ai-starter-model-openai'
 
-    // ── Database ─────────────────────────────────────────────────────────
+    // Database
     implementation 'org.flywaydb:flyway-core'
     implementation 'org.flywaydb:flyway-database-postgresql'
     runtimeOnly    'org.postgresql:postgresql'
 
-    // ── JWT ──────────────────────────────────────────────────────────────
+    // JWT
     implementation "io.jsonwebtoken:jjwt-api:${jjwtVersion}"
     runtimeOnly    "io.jsonwebtoken:jjwt-impl:${jjwtVersion}"
     runtimeOnly    "io.jsonwebtoken:jjwt-jackson:${jjwtVersion}"
 
-    // ── Test ─────────────────────────────────────────────────────────────
+    // Test
     testImplementation platform('org.springframework.boot:spring-boot-dependencies:4.1.1')
     testImplementation platform("org.testcontainers:testcontainers-bom:${testcontainersVersion}")
     testImplementation 'org.springframework.boot:spring-boot-starter-test'
@@ -58,8 +60,9 @@ dependencies {
     testRuntimeOnly    'org.junit.platform:junit-platform-launcher'
 }
 
+// Compile to Java 21 bytecode / restrict API to Java 21 surface
 tasks.withType(JavaCompile).configureEach {
-    options.release = 25
+    options.release = 21
 }
 
 tasks.named('test') {
